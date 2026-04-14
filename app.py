@@ -1,4 +1,4 @@
-import os, json
+import os, json, traceback
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
@@ -53,103 +53,120 @@ def init_db():
     conn.commit()
     conn.close()
 
-def row_to_dict(row, kind):
-    if kind == 'pg':
-        return dict(row)
-    else:
-        return dict(row)
-
 # ── Routes ────────────────────────────────────────────────────────────────────
 @app.route('/health')
 def health():
     return jsonify({'status': 'ok', 'db': 'postgres' if DATABASE_URL else 'sqlite'})
 
+@app.route('/init')
+def init_route():
+    try:
+        init_db()
+        return jsonify({'status': 'ok', 'message': 'Table created or already exists'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e), 'trace': traceback.format_exc()}), 500
+
 @app.route('/recipes', methods=['GET'])
 def get_recipes():
-    conn, kind = get_conn()
-    cur = conn.cursor()
-    if kind == 'pg':
-        import psycopg2.extras
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute('SELECT * FROM recipes ORDER BY created_at DESC')
-    rows = cur.fetchall()
-    conn.close()
-    result = []
-    for r in rows:
-        d = dict(r)
-        if 'created_at' in d and d['created_at']:
-            d['created_at'] = str(d['created_at'])
-        result.append(d)
-    return jsonify(result)
+    try:
+        conn, kind = get_conn()
+        cur = conn.cursor()
+        if kind == 'pg':
+            import psycopg2.extras
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute('SELECT * FROM recipes ORDER BY created_at DESC')
+        rows = cur.fetchall()
+        conn.close()
+        result = []
+        for r in rows:
+            d = dict(r)
+            if 'created_at' in d and d['created_at']:
+                d['created_at'] = str(d['created_at'])
+            result.append(d)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
 
 @app.route('/recipes', methods=['POST'])
 def add_recipe():
-    d = request.json or {}
-    conn, kind = get_conn()
-    if kind == 'pg':
-        import psycopg2.extras
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute('''INSERT INTO recipes (name,category,cook_time,servings,difficulty,ingredients,instructions,notes,photo_url)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *''',
-            (d.get('name'), d.get('category','Other'), d.get('cook_time',''),
-             d.get('servings',''), d.get('difficulty','Easy'),
-             d.get('ingredients',''), d.get('instructions',''),
-             d.get('notes',''), d.get('photo_url','')))
-        row = dict(cur.fetchone())
-    else:
-        cur = conn.cursor()
-        cur.execute('''INSERT INTO recipes (name,category,cook_time,servings,difficulty,ingredients,instructions,notes,photo_url)
-            VALUES (?,?,?,?,?,?,?,?,?)''',
-            (d.get('name'), d.get('category','Other'), d.get('cook_time',''),
-             d.get('servings',''), d.get('difficulty','Easy'),
-             d.get('ingredients',''), d.get('instructions',''),
-             d.get('notes',''), d.get('photo_url','')))
-        cur.execute('SELECT * FROM recipes WHERE id=?', (cur.lastrowid,))
-        row = dict(cur.fetchone())
-    conn.commit()
-    conn.close()
-    if 'created_at' in row and row['created_at']:
-        row['created_at'] = str(row['created_at'])
-    return jsonify(row), 201
+    try:
+        d = request.json or {}
+        conn, kind = get_conn()
+        if kind == 'pg':
+            import psycopg2.extras
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute('''INSERT INTO recipes (name,category,cook_time,servings,difficulty,ingredients,instructions,notes,photo_url)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *''',
+                (d.get('name'), d.get('category','Other'), d.get('cook_time',''),
+                 d.get('servings',''), d.get('difficulty','Easy'),
+                 d.get('ingredients',''), d.get('instructions',''),
+                 d.get('notes',''), d.get('photo_url','')))
+            row = dict(cur.fetchone())
+        else:
+            cur = conn.cursor()
+            cur.execute('''INSERT INTO recipes (name,category,cook_time,servings,difficulty,ingredients,instructions,notes,photo_url)
+                VALUES (?,?,?,?,?,?,?,?,?)''',
+                (d.get('name'), d.get('category','Other'), d.get('cook_time',''),
+                 d.get('servings',''), d.get('difficulty','Easy'),
+                 d.get('ingredients',''), d.get('instructions',''),
+                 d.get('notes',''), d.get('photo_url','')))
+            cur.execute('SELECT * FROM recipes WHERE id=?', (cur.lastrowid,))
+            row = dict(cur.fetchone())
+        conn.commit()
+        conn.close()
+        if 'created_at' in row and row['created_at']:
+            row['created_at'] = str(row['created_at'])
+        return jsonify(row), 201
+    except Exception as e:
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
 
 @app.route('/recipes/<int:rid>', methods=['PUT'])
 def update_recipe(rid):
-    d = request.json or {}
-    conn, kind = get_conn()
-    if kind == 'pg':
-        import psycopg2.extras
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute('''UPDATE recipes SET name=%s,category=%s,cook_time=%s,servings=%s,
-            difficulty=%s,ingredients=%s,instructions=%s,notes=%s,photo_url=%s WHERE id=%s RETURNING *''',
-            (d.get('name'), d.get('category'), d.get('cook_time'), d.get('servings'),
-             d.get('difficulty'), d.get('ingredients'), d.get('instructions'),
-             d.get('notes'), d.get('photo_url'), rid))
-        row = dict(cur.fetchone())
-    else:
-        cur = conn.cursor()
-        cur.execute('''UPDATE recipes SET name=?,category=?,cook_time=?,servings=?,
-            difficulty=?,ingredients=?,instructions=?,notes=?,photo_url=? WHERE id=?''',
-            (d.get('name'), d.get('category'), d.get('cook_time'), d.get('servings'),
-             d.get('difficulty'), d.get('ingredients'), d.get('instructions'),
-             d.get('notes'), d.get('photo_url'), rid))
-        cur.execute('SELECT * FROM recipes WHERE id=?', (rid,))
-        row = dict(cur.fetchone())
-    conn.commit()
-    conn.close()
-    if 'created_at' in row and row['created_at']:
-        row['created_at'] = str(row['created_at'])
-    return jsonify(row)
+    try:
+        d = request.json or {}
+        conn, kind = get_conn()
+        if kind == 'pg':
+            import psycopg2.extras
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute('''UPDATE recipes SET name=%s,category=%s,cook_time=%s,servings=%s,
+                difficulty=%s,ingredients=%s,instructions=%s,notes=%s,photo_url=%s WHERE id=%s RETURNING *''',
+                (d.get('name'), d.get('category'), d.get('cook_time'), d.get('servings'),
+                 d.get('difficulty'), d.get('ingredients'), d.get('instructions'),
+                 d.get('notes'), d.get('photo_url'), rid))
+            row = dict(cur.fetchone())
+        else:
+            cur = conn.cursor()
+            cur.execute('''UPDATE recipes SET name=?,category=?,cook_time=?,servings=?,
+                difficulty=?,ingredients=?,instructions=?,notes=?,photo_url=? WHERE id=?''',
+                (d.get('name'), d.get('category'), d.get('cook_time'), d.get('servings'),
+                 d.get('difficulty'), d.get('ingredients'), d.get('instructions'),
+                 d.get('notes'), d.get('photo_url'), rid))
+            cur.execute('SELECT * FROM recipes WHERE id=?', (rid,))
+            row = dict(cur.fetchone())
+        conn.commit()
+        conn.close()
+        if 'created_at' in row and row['created_at']:
+            row['created_at'] = str(row['created_at'])
+        return jsonify(row)
+    except Exception as e:
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
 
 @app.route('/recipes/<int:rid>', methods=['DELETE'])
 def delete_recipe(rid):
-    conn, kind = get_conn()
-    cur = conn.cursor()
-    ph = '%s' if kind == 'pg' else '?'
-    cur.execute(f'DELETE FROM recipes WHERE id={ph}', (rid,))
-    conn.commit()
-    conn.close()
-    return jsonify({'deleted': rid})
+    try:
+        conn, kind = get_conn()
+        cur = conn.cursor()
+        ph = '%s' if kind == 'pg' else '?'
+        cur.execute(f'DELETE FROM recipes WHERE id={ph}', (rid,))
+        conn.commit()
+        conn.close()
+        return jsonify({'deleted': rid})
+    except Exception as e:
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()}), 500
 
 if __name__ == '__main__':
     init_db()
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5055)), debug=False)
+
+# Run init on startup via gunicorn too
+init_db()
