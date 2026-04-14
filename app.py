@@ -86,9 +86,9 @@ def get_recipes():
 def add_recipe():
     d = request.json or {}
     conn, kind = get_conn()
-    cur = conn.cursor()
     if kind == 'pg':
         import psycopg2.extras
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute('''INSERT INTO recipes (name,category,cook_time,servings,difficulty,ingredients,instructions,notes,photo_url)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *''',
             (d.get('name'), d.get('category','Other'), d.get('cook_time',''),
@@ -97,6 +97,7 @@ def add_recipe():
              d.get('notes',''), d.get('photo_url','')))
         row = dict(cur.fetchone())
     else:
+        cur = conn.cursor()
         cur.execute('''INSERT INTO recipes (name,category,cook_time,servings,difficulty,ingredients,instructions,notes,photo_url)
             VALUES (?,?,?,?,?,?,?,?,?)''',
             (d.get('name'), d.get('category','Other'), d.get('cook_time',''),
@@ -115,9 +116,9 @@ def add_recipe():
 def update_recipe(rid):
     d = request.json or {}
     conn, kind = get_conn()
-    cur = conn.cursor()
     if kind == 'pg':
         import psycopg2.extras
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute('''UPDATE recipes SET name=%s,category=%s,cook_time=%s,servings=%s,
             difficulty=%s,ingredients=%s,instructions=%s,notes=%s,photo_url=%s WHERE id=%s RETURNING *''',
             (d.get('name'), d.get('category'), d.get('cook_time'), d.get('servings'),
@@ -125,6 +126,7 @@ def update_recipe(rid):
              d.get('notes'), d.get('photo_url'), rid))
         row = dict(cur.fetchone())
     else:
+        cur = conn.cursor()
         cur.execute('''UPDATE recipes SET name=?,category=?,cook_time=?,servings=?,
             difficulty=?,ingredients=?,instructions=?,notes=?,photo_url=? WHERE id=?''',
             (d.get('name'), d.get('category'), d.get('cook_time'), d.get('servings'),
