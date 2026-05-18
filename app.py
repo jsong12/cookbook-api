@@ -169,4 +169,7 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5055)), debug=False)
 
 # Run init on startup via gunicorn too
-init_db()
+try:
+    init_db()
+except Exception as e:
+    print(f"Warning: init_db() failed on startup: {e}")
